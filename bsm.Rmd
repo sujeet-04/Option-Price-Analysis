@@ -1,0 +1,203 @@
+---
+title: "Option Pricing"
+output:
+  pdf_document: default
+  html_document: default
+---
+                                           Option Pricing
+Option pricing theory estimates a worth of an options contract by assigning a price, referred to as a premium, supported the calculated probability that the contract will finish in-the-money (ITM) at expiration. An option is that the right, but not the requirement , to either buy or sell a hard and fast amount of an underlying security at a pre-determined price at or before the contract expires. Essentially, option pricing theory provides an evaluation of an option's fair value which traders incorporate into their strategies.Models used to price options account for variables such as current market price, strike price, volatility, interest rate, and time to expiration, to theoretically value an option. Some commonly used models to value options are Black-Scholes , binomial option pricing , and Monte-Carlo simulation                                    
+
+I will use Black-Scholes model here for the analysis and also compare my result in case if the transaction cost is consider in implied volatility.
+
+
+```{r setup, include=FALSE}
+
+#Create a Function for call option using Black-Scholes Model.
+
+call_option <- function(S,X,r,t,b){
+  #Where S = Current Stock Price, X = Exercise Price, r = risk free interest rate,                    t = time to maturity and b = volatility 
+  d1 <- (log(S/X) + ((r + (b^2/2))*t))/b*sqrt(t)
+  d2 <- d1 - b*sqrt(t)
+  N1 <- pnorm(d1)
+  N2 <- pnorm(d2)
+  C <- S*N1 - ((X*N2)/exp(r*t))
+  return(C)
+}
+
+#Create a Function for Put option using Black-Scholes Model.
+
+Put_option <- function(S,X,r,t,b){
+  #Where S = Current Stock Price, X = Exercise Price, r = risk free interest rate,                    t = time to maturity and b = volatility 
+  d1 <- (log(S/X) + ((r + (b^2/2))*t))/b*sqrt(t)
+  d2 <- d1 - b*sqrt(t)
+  N1 <- pnorm(-d1)
+  N2 <- pnorm(-d2)
+  P <- ((X*N2)/exp(r*t)) - S*N1
+  return(P)
+}
+
+#Create a Function for Call option using Black-Scholes Model by considering Transaction cost.
+
+call_option_T <- function(S,X,r,t,b,k){
+  #Where S = Current Stock Price, X = Exercise Price, r = risk free interest rate,                    t = time to maturity, k = Transaction cost ratio and b = volatility 
+  b1 <- sqrt((b^2) - (2*sqrt(2*7/22*t)*k*b))
+  d1 <- (log(S/X) + ((r + (b1^2/2))*t))/b1*sqrt(t)
+  d2 <- d1 - b1*sqrt(t)
+  N1 <- pnorm(d1)
+  N2 <- pnorm(d2)
+  C <- S*N1 - ((X*N2)/exp(r*t))
+  return(C)
+}
+
+#Create a Function for Put option using Black-Scholes Model by considering Transaction cost.
+
+Put_option_T <- function(S,X,r,t,b,k){
+  #Where S = Current Stock Price, X = Exercise Price, r = risk free interest rate,                    t = time to maturity, k = Transaction cost ratio and b = volatility 
+  b1 <- sqrt((b^2) + (2*sqrt(2*7/22*t)*k*b))
+  d1 <- (log(S/X) + ((r + (b1^2/2))*t))/b1*sqrt(t)
+  d2 <- d1 - b1*sqrt(t)
+  N1 <- pnorm(-d1)
+  N2 <- pnorm(-d2)
+  P <- ((X*N2)/exp(r*t)) - S*N1
+  return(P)
+}
+
+#To validate my all 4 function i will use the same example mention in the assignment to find the call and put option.
+# S = 23, X = 20, r = 0.06, t = 1, b = 0.2, k = 0.001
+
+call_option(23,20,0.06,1,0.2) # 4.51
+call_option_T(23,20,0.06,1,0.2,0.001) # 4.50
+Put_option(23,20,0.06,1,0.2) # 0.34
+Put_option_T(23,20,0.06,1,0.2,0.001) # 0.35
+
+#As i can see all my answer matches with the original one so i can continue with these function.
+
+```
+
+Next i use these function to see which method gives me better option price. For that i will use the AAPL dataset that i downloaded from kaggel website, the link is.The Dataset contains the trading records of 1/5/2016. 
+https://www.kaggle.com/mohantys/gs-option-prices
+
+```{r}
+library(readr)
+
+#Load the Dataset
+AAPl_data <- read_csv("AAPL.csv")
+head(AAPl_data)
+
+#Next i will remove the columns which are not required,as i am dealing with the Buyer prospective so i will consider bid values for call, put and implied volatilty.
+
+AAPl_data2 <- AAPl_data[,c(2,4:7,10,16)] #select those columns only which is reuired for the further calculation based on index their number.(ex : index number for underlying price is 2 and next so on)
+head(AAPl_data2)
+
+#Now i will add one column for time to expire which i need to calculate the call and put option 
+
+AAPl_data2$Time_Period <-  as.Date(AAPl_data2$Expiration,format = "%m/%d/%y") -
+                           as.Date(AAPl_data2$DataDate,format = "%m/%d/%y")
+#as.Date function here transform the expiration and data date column into date format. And after transformation i substract the data date from the expiration date to get the time to expire for the current option either it is call or put.
+
+head(AAPl_data2) # to see the first 6 rows of the dataset
+
+#As i get the time period data next i will transform it into years by dividing it by 365 and remove the data and expiration date as those are of no use now.
+
+AAPl_data2$Time_Period <- round(AAPl_data2$Time_Period/365,6) #As i need to transform the time into years so i divided it by 365. The $ function used to call the column of that dataset.(Ex if i want to call Type of option than first datset name AAPL_data2 then $ and column name Type.) 
+
+AAPl_data3 <- AAPl_data2[,-c(3,4)] #As i got the time to expire value so just remove the data date and expiration date column using their index value, The - used to remove the columns here.
+head(AAPl_data3)
+
+#My next task is to transform the dataset in way that for same strike price i will get both call and put price in same row.
+Put_data <- AAPl_data3[AAPl_data3$Type == "put",] #In the AAPL Dataset select those rows only where type is eual to put.If i execute AAPL_data3[] only then full dataset will display as outuput so i wrote my condition inside the [] to call those values only where type = put.
+call_data <- AAPl_data3[AAPl_data3$Type == "call",]# the same method apply's here
+
+AAPl_data4 <- as.data.frame(cbind(Put_data,call_data)) #now merge both the call and put data into single file and then transform it into data frame.
+head(AAPl_data4) 
+
+#Remove the duplicate columns.
+AAPl_data5 <- AAPl_data4[,-c(2,7:9,12)] # Remove the duplicate columns based on their index values.
+head(AAPl_data5)
+
+
+#Rename the columns.
+colnames(AAPl_data5) <- c("Stock_Price","Strike_Price","Put_Price",
+                          "Implied_Volatility_Put","Time","Call_Price",
+                          "Implied_Volatility_Call")
+#Just rename the columns so that it can be easily identified. 
+AAPl_data5 <- AAPl_data5[,c(1,3,4,2,6,7,5)]#arrange the data in the same way as listed in option chain website.
+head(AAPl_data5)
+
+#As i am done with the data manipulation next i will calculate the risk free interest rate.
+# To calculate the risk free interest rate i will use the formula                                                    S-D-X <= C-P <= S - Xe^(-rt)
+#Here S = Stock Price, X = Strike Price, D = present value of cash Dividend,                C = call price, P = Put Price, r = risk free interest rate and t is time.
+# I got the reference of the above equation from the problem 10.19 of Hull's book.
+# After solving the above equation i got 
+# r = -log((S+P-C)/x)/t
+str(AAPl_data5)# To see the structure of the dataset.
+AAPl_data5$Time <- as.numeric(AAPl_data5$Time) #transform the time column into numeric value.
+
+attach(AAPl_data5) # i use attach function for not using the table name every time like AAPL_data5$Type by using attach i can simply call the type without using the dataset name. 
+AAPl_data5$Risk_free_Rate <- -(log((Stock_Price + Put_Price - 
+                                      Call_Price)/Strike_Price)/Time)
+
+#This is basic math formula used in hull's book to find the risk free interest of the option.
+```
+
+
+```{r}
+library(MLmetrics)
+library(ggplot2)
+attach(AAPl_data5)
+#Calculate the Put Price based on the parameter given on the dataset.
+Predicted_Put_Price <- round(abs(Put_option(Stock_Price,Strike_Price,
+                                  Risk_free_Rate,Time,Implied_Volatility_Put/100)),3)
+
+#here i simply apply the value's in the function which i created tp calculate put option price and after that i use abs and round. abs is used to get positive value only and round will restrict the decimal values. 
+#Calculate the mean square error from the original put price.
+
+MSE(Predicted_Put_Price,AAPl_data5$Put_Price)
+
+#Calculate the Put Price based on the parameter given on the dataset by considering transaction cost.Transaction cost i will consider same as mention in the assignment 0.001
+
+Predicted_Put_Price_T <- round(abs(Put_option_T(Stock_Price,Strike_Price,                                    Risk_free_Rate,Time,Implied_Volatility_Put/100,0.001)),3)
+
+#Calculate the mean square error from the original put price.
+MSE(Predicted_Put_Price_T,AAPl_data5$Put_Price)
+
+#Predict the call Price based on the parameters given on the dataset.
+Predicted_Call_Price <- round(abs(call_option(Stock_Price,Strike_Price,                                            Risk_free_Rate,Time,Implied_Volatility_Call/100)),3)
+
+#Calculate the mean square error from the original Call price.
+MSE(Predicted_Call_Price,AAPl_data5$Call_Price)
+
+#Calculate the Call Price based on the parameter given on the dataset by considering transaction cost.
+Predicted_Call_Price_T <- round(abs(call_option_T(Stock_Price,Strike_Price,                                       Risk_free_Rate,Time,Implied_Volatility_Call/100,0.001)),3)
+
+#Calculate the mean square error from the original Call price.
+MSE(Predicted_Call_Price_T,AAPl_data5$Call_Price)
+
+#to get the better understaning i will merge all three put price in a dataframe
+
+#For Put Price
+Put_Price <- data.frame(AAPl_data5$Put_Price,Predicted_Put_Price,Predicted_Put_Price_T)
+colnames(Put_Price) <- c("Act_Price","Predicted_Price","Predicted_priceT")
+attach(Put_Price)
+
+ggplot(aes(x = as.numeric(row.names(Put_Price))),data = Put_Price) + 
+         geom_line(aes( y =  Act_Price),color = "darkred") + 
+            geom_line(aes( y = Predicted_Price),color = "steelblue") + 
+               geom_line(aes( y = Predicted_priceT),color = "Pink")
+
+#Now same for call price
+
+Call_Price <- data.frame(AAPl_data5$Call_Price,Predicted_Call_Price,Predicted_Call_Price_T)
+
+colnames(Call_Price) <- c("Act_Price","Predicted_CPrice","Predicted_CpriceT")
+attach(Call_Price)
+
+ggplot(aes(x = as.numeric(row.names(Call_Price))),#Row names means x take index value of my dataset.
+       data = Call_Price) + 
+         geom_line(aes( y =  Act_Price),color = "darkred") + # in first line Actual price data will plot
+            geom_line(aes( y = Predicted_CPrice),color = "steelblue") + # In second line Predicted call price data will plot. 
+               geom_line(aes( y = Predicted_CpriceT),color = "Pink") # in the third line predicted call price with transaction cost will plot.
+
+```
+
+Here I can see there is some difference in my predicted value and actual values, the difference is due to the factor which is either not disclose or not constant throughout the time, for example, cash dividend ratio, and also the value of underlying decreases with benefits and increases with the cost of carrying.SO it's not possible that we will come into exact values every time. As my most of the value is aligned with the original slope so I can validate my model, if I compare both the model one where I consider transaction cost and in another with the traditional method, the mean square error is low in the earlier case, so I can say that the model with transaction cost giving me more accurate value compare to traditional one, but one thing also should be considered here that the difference of error between both these model is not high       
